@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Docdown</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap">
+<style>
+/* Layout: two-column workbench. Left = drop zone, options, file queue. Right = editable Markdown output with preview tab. */
+:root {
+  --bg: #E9EDF1;
+  --surface: #FFFFFF;
+  --surface-2: #F3F6F8;
+  --ink: #12202B;
+  --muted: #55667A;
+  --line: #D3DBE2;
+  --accent: #0A7C6E;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #D9F0EC;
+  --warn: #9A4A06;
+  --bad: #B42318;
+  --font-ui: "IBM Plex Sans Thai", "Noto Sans Thai", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "IBM Plex Sans Thai", "Noto Sans Thai", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-mark: "Bricolage Grotesque", "IBM Plex Sans Thai", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1418; --surface: #151D23; --surface-2: #1B252C; --ink: #E6EDF2; --muted: #93A4B1;
+    --line: #27343D; --accent: #3FCDB4; --accent-ink: #06201B; --accent-soft: #123B35;
+    --warn: #F0B35A; --bad: #FF8A80; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1418; --surface: #151D23; --surface-2: #1B252C; --ink: #E6EDF2; --muted: #93A4B1;
+  --line: #27343D; --accent: #3FCDB4; --accent-ink: #06201B; --accent-soft: #123B35;
+  --warn: #F0B35A; --bad: #FF8A80; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 400 15px/1.7 var(--font-ui); padding-inline: 16px; padding-block: 24px 40px; margin: 0; }
+.wrap { max-width: 1180px; margin-inline: auto; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+.mark { font: 700 28px/1.2 var(--font-mark); letter-spacing: -0.02em; margin: 0; }
+.mark span { color: var(--accent); }
+.tag { color: var(--muted); margin: 0; font-size: 14px; }
+.bench { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.col { display: grid; gap: 16px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.drop { display: grid; gap: 6px; justify-items: start; padding: 22px 18px; border: 2px dashed var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; transition: border-color .15s, background .15s; position: relative; }
+.drop:hover, .drop.over, .drop:focus-within { border-color: var(--accent); background: var(--accent-soft); }
+.drop strong { font-size: 16px; font-weight: 600; }
+.drop small { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.btn { font: 500 14px/1.2 var(--font-ui); border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 9px 14px; border-radius: 7px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { border-color: var(--accent); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.06); }
+.btn:focus-visible, .item:focus-visible, .tab:focus-visible, textarea:focus-visible, .inp:focus-visible, .x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn[hidden] { display: none; }
+.opts { padding: 14px 16px; display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin: 0; min-width: 0; }
+.opts legend { font: 600 12px var(--font-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 0 6px; margin-left: -6px; }
+.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.55; }
+.opt input { margin-top: 5px; accent-color: var(--accent); }
+.opt small { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.range { display: grid; gap: 4px; font-size: 14px; }
+.range small { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.inp { font: 400 14px var(--font-mono); padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2); color: var(--ink); width: 100%; }
+.queue-h { display: flex; justify-content: space-between; align-items: center; padding: 0 2px; }
+.queue-h h2 { font: 600 12px var(--font-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.link { background: none; border: 0; color: var(--muted); font: 400 13px var(--font-ui); cursor: pointer; text-decoration: underline; padding: 2px; }
+.link:hover { color: var(--ink); }
+.link[hidden] { display: none; }
+.list { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.row { display: flex; gap: 6px; align-items: stretch; }
+.item { flex: 1; min-width: 0; text-align: left; display: grid; gap: 2px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font: inherit; line-height: 1.5; color: inherit; }
+.item[aria-current="true"] { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.item .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .meta { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12.5px; color: var(--muted); }
+.badge { font: 500 11px var(--font-mono); text-transform: uppercase; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--muted); }
+.st-done { color: var(--accent); } .st-error { color: var(--bad); } .st-working { color: var(--warn); }
+.x { width: 34px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; color: var(--muted); cursor: pointer; font-size: 16px; }
+.x:hover { color: var(--bad); border-color: var(--bad); }
+.out { display: grid; grid-template-rows: auto 1fr auto; min-height: 560px; overflow: hidden; }
+.out-h { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.fname { display: flex; align-items: center; gap: 8px; min-width: 0; font: 500 14px var(--font-mono); }
+.fname span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip { font: 500 12px var(--font-ui); background: var(--accent-soft); color: var(--accent); padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.chip[hidden] { display: none; }
+.tabs { display: flex; gap: 2px; padding: 4px; background: var(--surface-2); border-radius: 8px; }
+.tab { border: 0; background: none; font: 500 13px var(--font-ui); color: var(--muted); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.body { position: relative; min-height: 0; display: grid; }
+textarea { width: 100%; height: 100%; min-height: 440px; resize: none; border: 0; background: var(--surface); color: var(--ink); font: 400 13.5px/1.85 var(--font-mono); padding: 16px; tab-size: 2; }
+textarea[hidden], .preview[hidden] { display: none; }
+.preview { overflow: auto; padding: 18px 22px; max-height: 640px; line-height: 1.85; }
+.preview h1, .preview h2, .preview h3, .preview h4 { line-height: 1.45; margin: 1.2em 0 .4em; text-wrap: balance; }
+.preview h1 { font-size: 1.6em; } .preview h2 { font-size: 1.35em; } .preview h3 { font-size: 1.15em; }
+.preview p, .preview ul, .preview ol { margin: .6em 0; max-width: 72ch; }
+.preview table { border-collapse: collapse; display: block; overflow-x: auto; max-width: 100%; }
+.preview th, .preview td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+.preview th { background: var(--surface-2); }
+.preview hr { border: 0; border-top: 1px solid var(--line); margin: 1.4em 0; }
+.preview code { font-family: var(--font-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+.cut { color: var(--warn); font-size: 13px; border-top: 1px dashed var(--line); margin-top: 16px; padding-top: 10px; }
+.state { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center; padding: 24px; background: var(--surface); color: var(--muted); }
+.state[hidden] { display: none; }
+.state b { color: var(--ink); font-weight: 600; }
+.bar { width: min(280px, 70vw); height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); transition: width .15s; }
+.out-f { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 9px 14px; border-top: 1px solid var(--line); font: 400 12.5px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.note { color: var(--warn); font-size: 13px; line-height: 1.55; padding: 8px 14px; border-top: 1px solid var(--line); background: var(--surface-2); }
+.note[hidden] { display: none; }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; max-width: calc(100vw - 32px); z-index: 10; }
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 class="mark">Doc<span>down</span></h1>
+    <p class="tag">แปลง PDF, Word (.docx) และ Excel (.xlsx .xls .csv) เป็น Markdown ไฟล์ประมวลผลในเบราว์เซอร์ของคุณ ไม่ถูกอัปโหลดไปที่ใด</p>
+  </header>
+
+  <div class="bench">
+    <div class="col">
+      <label class="drop" id="drop" for="file">
+        <strong>ลากไฟล์มาวาง หรือคลิกเพื่อเลือก</strong>
+        <small>รองรับ .pdf .docx .xlsx .xls .csv เลือกได้หลายไฟล์พร้อมกัน PDF หลักพันหน้าก็ไหว</small>
+        <span class="btn primary" aria-hidden="true">เลือกไฟล์</span>
+        <input id="file" type="file" accept=".pdf,.docx,.xlsx,.xlsm,.xls,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" multiple>
+      </label>
+
+      <fieldset class="opts">
+        <legend>ตัวเลือก PDF</legend>
+        <label class="range" for="o-range">ช่วงหน้าที่ต้องการ
+          <input class="inp" id="o-range" type="text" inputmode="text" placeholder="ทั้งหมด หรือ 1-50, 80, 120-200" autocomplete="off">
+          <small>เหมาะกับไฟล์ใหญ่ ลองแปลงบางช่วงก่อนได้ กด Enter เพื่อใช้ค่า</small>
+        </label>
+        <label class="opt"><input type="checkbox" id="o-head" checked><span>ตรวจหัวข้อ<small>ดูจากขนาดตัวอักษรที่ใหญ่กว่าเนื้อหา</small></span></label>
+        <label class="opt"><input type="checkbox" id="o-hf" checked><span>ตัดหัวกระดาษ/ท้ายกระดาษที่ซ้ำ<small>เช่น เลขหน้า ชื่อบริษัทที่ขึ้นทุกหน้า</small></span></label>
+        <label class="opt"><input type="checkbox" id="o-pg"><span>ขีดคั่นระหว่างหน้า<small>แทรก --- ที่รอยต่อของแต่ละหน้า</small></span></label>
+        <label class="opt"><input type="checkbox" id="o-pos"><span>เรียงข้อความตามตำแหน่งบนหน้า<small>เปิดเมื่อข้อความที่ได้สลับลำดับ เช่น ไฟล์ที่ลำดับในโครงสร้างไม่ตรงกับที่ตาเห็น</small></span></label>
+      </fieldset>
+
+      <fieldset class="opts">
+        <legend>ตัวเลือก Excel / CSV</legend>
+        <label class="opt"><input type="checkbox" id="o-hid" checked><span>ข้ามชีตที่ซ่อนอยู่<small>แต่ละชีตจะกลายเป็นหัวข้อ ## และตาราง แถวแรกเป็นหัวตาราง ค่าที่แสดงตามรูปแบบในไฟล์ เช่น วันที่ ทศนิยม</small></span></label>
+      </fieldset>
+
+      <div>
+        <div class="queue-h"><h2>รายการไฟล์</h2><button class="link" id="clear" type="button">ล้างทั้งหมด</button></div>
+        <ul class="list" id="list"></ul>
+      </div>
+    </div>
+
+    <section class="card out" aria-label="ผลลัพธ์ Markdown">
+      <div class="out-h">
+        <div class="fname"><span id="fname">-</span><span class="chip" id="chip" hidden>ตัวอย่าง</span></div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" id="t-md" aria-selected="true" type="button">Markdown</button>
+          <button class="tab" role="tab" id="t-pv" aria-selected="false" type="button">ตัวอย่างผลลัพธ์</button>
+        </div>
+        <div class="acts">
+          <button class="btn" id="copy" type="button">คัดลอก</button>
+          <button class="btn primary" id="save" type="button">บันทึกเป็น .md</button>
+        </div>
+      </div>
+      <div class="body">
+        <textarea id="ta" spellcheck="false" lang="th" aria-label="ข้อความ Markdown แก้ไขได้"></textarea>
+        <div class="preview" id="pv" lang="th" hidden></div>
+        <div class="state" id="state" hidden></div>
+      </div>
+      <div>
+        <div class="note" id="note" hidden></div>
+        <div class="out-f"><span id="s-ch">0 ตัวอักษร</span><span id="s-ln">0 บรรทัด</span><span id="s-hd">0 หัวข้อ</span><span id="s-tb">0 ตาราง</span></div>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/turndown/7.1.2/turndown.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<script>
+/*PURE_START*/
+var THAI = /[฀-๿]/;
+var THMARK = /^[ัิ-ฺ็-๎]+$/;
+var PUA = { 0xF700: 'ฐ', 0xF701: 'ิ', 0xF702: 'ี', 0xF703: 'ึ', 0xF704: 'ื', 0xF705: '่', 0xF706: '้', 0xF707: '๊', 0xF708: '๋', 0xF709: '์', 0xF70A: '่', 0xF70B: '้', 0xF70C: '๊', 0xF70D: '๋', 0xF70E: '์', 0xF70F: 'ญ', 0xF710: 'ั', 0xF711: 'ํ', 0xF712: '็', 0xF713: '่', 0xF714: '้', 0xF715: '๊', 0xF716: '๋', 0xF717: '์', 0xF718: 'ุ', 0xF719: 'ู', 0xF71A: 'ฺ' };
+
+/* แก้ปัญหาตัวอักษรไทยจาก PDF: ฟอนต์เก่า (PUA), สระอำแยกชิ้น, วรรณยุกต์ซ้ำ, เ+เ */
+function thaiFix(s) {
+  if (!THAI.test(s) && !/[-​]/.test(s)) return s;
+  s = s.replace(/[-]/g, function (c) { return PUA[c.charCodeAt(0)] || ''; });
+  s = s.replace(/[​﻿]/g, '');
+  s = s.replace(/ํ([่-๋])?า/g, function (m, t) { return (t || '') + 'ำ'; });
+  s = s.replace(/([่-๋])ํา/g, '$1ำ');
+  s = s.replace(/([ัิ-ฺ็-๎])\1+/g, '$1');
+  s = s.replace(/เเ/g, 'แ');
+  return s;
+}
+
+function parseRange(str, n) {
+  str = (str || '').replace(/[๐-๙]/g, function (c) { return String(c.charCodeAt(0) - 0x0E50); }).trim();
+  var all = [], i;
+  if (!str || /^(all|ทั้งหมด)$/i.test(str)) { for (i = 1; i <= n; i++) all.push(i); return all; }
+  var seen = {};
+  str.split(/[,\s;]+/).forEach(function (part) {
+    var m = /^(\d+)(?:\s*[-–]\s*(\d+))?$/.exec(part);
+    if (!m) return;
+    var a = parseInt(m[1], 10), b = m[2] ? parseInt(m[2], 10) : a;
+    if (a > b) { var t = a; a = b; b = t; }
+    for (var k = Math.max(1, a); k <= Math.min(n, b); k++) seen[k] = 1;
+  });
+  return Object.keys(seen).map(Number).sort(function (x, y) { return x - y; });
+}
+
+/* items จาก pdf.js -> บรรทัดข้อความ */
+function buildLines(raw, byPos) {
+  var its = [], prev = null;
+  raw.forEach(function (it) {
+    if (typeof it.str !== 'string' || !it.str.length) return;
+    var s = thaiFix(it.str);
+    if (!s.length) return;
+    var tr = it.transform;
+    if (THMARK.test(s) && prev) { prev.s += s; return; }   /* วรรณยุกต์/สระลอย ต่อท้ายตัวก่อนหน้าเสมอ */
+    prev = { s: s, x: tr[4], y: tr[5], w: it.width || 0, size: Math.hypot(tr[0], tr[1]) || it.height || 10 };
+    its.push(prev);
+  });
+  if (byPos) its.sort(function (a, b) { return (b.y - a.y) || (a.x - b.x); });
+  var lines = [], line = null;
+  its.forEach(function (it) {
+    if (!line || Math.abs(line.y - it.y) > Math.max(line.size, it.size) * 0.6) {
+      line = { y: it.y, size: it.size, parts: [] }; lines.push(line);
+    }
+    line.parts.push(it);
+  });
+  var out = [];
+  lines.forEach(function (l) {
+    if (byPos) l.parts.sort(function (a, b) { return a.x - b.x; });
+    var text = '', last = null, weight = {}, x1 = Infinity, x2 = -Infinity;
+    l.parts.forEach(function (p) {
+      if (last) {
+        var gap = p.x - (last.x + last.w);
+        var both = THAI.test(text.charAt(text.length - 1)) && THAI.test(p.s.charAt(0));
+        var th = both ? p.size * 0.33 : p.size * 0.18;
+        if (gap > th && !/\s$/.test(text) && !/^\s/.test(p.s)) text += ' ';
+      }
+      text += p.s; last = p;
+      var k = Math.round(p.size * 2) / 2; weight[k] = (weight[k] || 0) + p.s.length;
+      if (p.x < x1) x1 = p.x;
+      if (p.x + p.w > x2) x2 = p.x + p.w;
+    });
+    text = text.replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    var best = l.size, bw = -1;
+    Object.keys(weight).forEach(function (k) { if (weight[k] > bw) { bw = weight[k]; best = parseFloat(k); } });
+    out.push({ text: text, x: x1, x2: x2, y: l.y, size: best });
+  });
+  return out;
+}
+
+/* ชุดบรรทัดต่อหน้า -> Markdown ทั้งเล่ม  pd = [{n, lines}] */
+function assemble(pd, o) {
+  var total = 0, hist = {}, i;
+  pd.forEach(function (p) { p.lines.forEach(function (l) { total += l.text.length; var k = Math.round(l.size * 2) / 2; hist[k] = (hist[k] || 0) + l.text.length; }); });
+  if (total < 20) return { md: '', warn: 'ไม่พบข้อความในหน้าที่เลือก อาจเป็น PDF ที่สแกนมาเป็นรูปภาพ ซึ่งต้องใช้ OCR' };
+  var body = 11, bw = -1;
+  Object.keys(hist).forEach(function (k) { if (hist[k] > bw) { bw = hist[k]; body = parseFloat(k); } });
+
+  var drop = null;
+  if (o.hf && pd.length >= 3) {
+    var cnt = {};
+    pd.forEach(function (p) {
+      var seen = {}, ls = p.lines;
+      ls.forEach(function (l, j) {
+        if (j < 2 || j >= ls.length - 2) { var k = l.text.replace(/[0-9๐-๙]+/g, '#'); if (!seen[k]) { seen[k] = 1; cnt[k] = (cnt[k] || 0) + 1; } }
+      });
+    });
+    drop = function (l, j, len) {
+      if (!(j < 2 || j >= len - 2)) return false;
+      return cnt[l.text.replace(/[0-9๐-๙]+/g, '#')] >= pd.length * 0.6;
+    };
+  }
+
+  var outPages = [];
+  pd.forEach(function (p) {
+    var ls = drop ? p.lines.filter(function (l, j) { return !drop(l, j, p.lines.length); }) : p.lines;
+    var longL = ls.filter(function (l) { return l.text.length > 25; });
+    var margin = 0, rmax = 0;
+    if (longL.length) {
+      margin = Infinity; rmax = -Infinity;
+      longL.forEach(function (l) { if (l.x < margin) margin = l.x; if (l.x2 > rmax) rmax = l.x2; });
+    }
+    var width = rmax - margin;
+    var blocks = [], para = null, prev = null;
+    ls.forEach(function (l) {
+      var t = l.text, ratio = l.size / body, level = 0;
+      if (o.head && t.length < 120 && ratio >= 1.15) level = ratio >= 1.8 ? 1 : ratio >= 1.5 ? 2 : ratio >= 1.3 ? 3 : 4;
+      var bullet = !level && (/^[•●▪◦‣▫■·]\s*/.test(t) || /^[-–—*]\s+/.test(t));
+      var num = !level && /^[0-9๐-๙]+[.)]\s+/.test(t);
+      var gap = prev ? prev.y - l.y : 0;
+      var brk = !para || gap > body * 1.7 || gap < -body * 3 || level || para.type === 'h' || bullet || num;
+      if (!brk && para.type === 'p' && width > 0) {
+        if ((prev.x2 - margin) < width * 0.6) brk = true;                                              /* บรรทัดก่อนสั้น = จบย่อหน้า */
+        else if ((l.x - margin) > body * 1.2 && (prev.x - margin) < body * 0.8 && (l.x - prev.x) > body * 1.2) brk = true;   /* ย่อหน้าเว้นบรรทัดแรก */
+      }
+      if (brk) {
+        var type = level ? 'h' : (bullet ? 'li' : (num ? 'ol' : 'p'));
+        var txt = bullet ? t.replace(/^[•●▪◦‣▫■·\-–—*]\s*/, '') : (num ? t.replace(/^([0-9๐-๙]+)[.)]\s+/, '$1. ') : t);
+        para = { type: type, level: level, text: txt }; blocks.push(para);
+      } else {
+        var a = para.text.slice(-1), b = t.charAt(0);
+        if (/[a-z]-$/.test(para.text) && /^[a-z]/.test(t)) para.text = para.text.slice(0, -1) + t;
+        else para.text += ((THAI.test(a) && THAI.test(b)) ? '' : ' ') + t;
+      }
+      prev = l;
+    });
+    var parts = [], lastT = '';
+    blocks.forEach(function (b) {
+      var s = b.type === 'h' ? '#'.repeat(b.level) + ' ' + b.text : (b.type === 'li' ? '- ' + b.text : b.text);
+      var sep = parts.length === 0 ? '' : (((lastT === 'li' && b.type === 'li') || (lastT === 'ol' && b.type === 'ol')) ? '\n' : '\n\n');
+      parts.push(sep + s); lastT = b.type;
+    });
+    var pt = parts.join('');
+    if (pt) outPages.push(pt);
+  });
+  var md = outPages.join(o.pg ? '\n\n---\n\n' : '\n\n');
+  return { md: md.trim() + '\n', warn: '' };
+}
+/*PURE_END*/
+
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var inViewer = !!(window.claude && window.claude.use);
+  var SAMPLE = [
+    '# รายงานการบำรุงรักษาประจำเดือน', '',
+    'เอกสารนี้เป็นตัวอย่างผลลัพธ์ที่แปลงจากไฟล์ Word หัวข้อ รายการ และตารางจะถูกคงโครงสร้างไว้', '',
+    '## สรุปงานที่ดำเนินการ', '',
+    '- ตรวจสอบเครื่องอัดอากาศ **ครบทุกเครื่อง**',
+    '- เปลี่ยนไส้กรองระบบปรับอากาศ โซน B',
+    '- ปรับตั้งค่ามิเตอร์พลังงานใหม่', '',
+    '## ตารางสถานะ', '',
+    '| อุปกรณ์ | สถานะ | กำหนดถัดไป |', '| --- | --- | --- |',
+    '| Compressor 1 | ปกติ | 15 ต.ค. |', '| Chiller 2 | รอเปลี่ยนอะไหล่ | 22 ต.ค. |', '| AHU-07 | ปกติ | 05 พ.ย. |', ''
+  ].join('\n');
+
+  var PV_LIMIT = 150000;
+  var WORKER_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  var CMAP_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/';
+  var items = [], sel = null, tab = 'md', dl = null, nextId = 1, chain = Promise.resolve(), workerBroken = false;
+  var td = null;
+  try {
+    td = new TurndownService({ headingStyle: 'atx', bulletListMarker: '-', codeBlockStyle: 'fenced', emDelimiter: '*' });
+    if (window.turndownPluginGfm) td.use(window.turndownPluginGfm.gfm);
+    td.addRule('dropimg', { filter: 'img', replacement: function () { return ''; } });
+  } catch (e) { td = null; }
+  if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_SRC;
+
+  function opts() { return { head: $('#o-head').checked, hf: $('#o-hf').checked, pg: $('#o-pg').checked, pos: $('#o-pos').checked, hid: $('#o-hid').checked, range: $('#o-range').value }; }
+  function tick() { return new Promise(function (r) { setTimeout(r, 0); }); }
+  function toast(msg) {
+    var t = $('#toast'); t.textContent = msg; t.classList.add('on');
+    clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove('on'); }, 2400);
+  }
+  function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+  function fmtTime(s) { s = Math.max(1, Math.round(s)); return s >= 60 ? Math.floor(s / 60) + ' นาที ' + (s % 60) + ' วินาที' : s + ' วินาที'; }
+  function mdName(n) { return n.replace(/\.[^.]+$/, '') + '.md'; }
+  function cur() { return items.filter(function (i) { return i.id === sel; })[0] || null; }
+
+  /* ---------- PDF (worker จริงเมื่อทำได้ ไม่งั้นถอยกลับไปแบบ fake worker) ---------- */
+  function makeWorker() {
+    if (workerBroken) return Promise.resolve(null);
+    return new Promise(function (res) {
+      var done = false, tm = null, w = null;
+      function finish(ok) {
+        if (done) return; done = true; clearTimeout(tm);
+        if (!ok) { workerBroken = true; try { if (w) w.terminate(); } catch (e) {} res(null); } else res(w);
+      }
+      try {
+        var code = "try{importScripts('" + WORKER_SRC + "');postMessage('docdown-ready');}catch(e){postMessage('docdown-fail');}";
+        w = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+        w.addEventListener('message', function (e) { if (e.data === 'docdown-ready') finish(true); else if (e.data === 'docdown-fail') finish(false); });
+        w.addEventListener('error', function () { finish(false); });
+        tm = setTimeout(function () { finish(false); }, 12000);
+      } catch (e) { finish(false); }
+    });
+  }
+
+  async function convertPdf(item) {
+    if (!window.pdfjsLib) throw new Error('โหลดตัวอ่าน PDF ไม่สำเร็จ ลองรีเฟรชหน้านี้');
+    var o = opts();
+    var mode = o.pos ? 'pos' : 'stream';
+    if (!item.cache || item.cache.mode !== mode) item.cache = { mode: mode, pages: {}, n: item.cache ? item.cache.n : 0 };
+    var C = item.cache, failed = 0;
+
+    var needFull = !C.n;
+    var want = C.n ? parseRange(o.range, C.n) : null;
+    var missing = want ? want.filter(function (n) { return !C.pages[n]; }) : null;
+
+    if (needFull || missing.length) {
+      var buf = await item.file.arrayBuffer();
+      var w = await makeWorker();
+      var params = { data: new Uint8Array(buf), isEvalSupported: false, disableFontFace: true, cMapUrl: CMAP_URL, cMapPacked: true };
+      if (w) params.worker = new pdfjsLib.PDFWorker({ port: w });
+      var task = pdfjsLib.getDocument(params), pdf;
+      try { pdf = await task.promise; } catch (e) { if (w) w.terminate(); throw e; }
+      buf = null;
+      C.n = pdf.numPages;
+      want = parseRange(o.range, C.n);
+      if (!want.length) { await pdf.destroy(); if (w) w.terminate(); throw new Error('ช่วงหน้าที่ระบุไม่ตรงกับไฟล์นี้ ไฟล์มี ' + C.n + ' หน้า'); }
+      missing = want.filter(function (n) { return !C.pages[n]; });
+      item.t0 = Date.now(); item.pagesTotal = missing.length; item.pagesDone = 0;
+      var B = w ? 8 : 3;
+      for (var i = 0; i < missing.length; i += B) {
+        if (item.cancel) break;
+        var batch = missing.slice(i, i + B);
+        var res = await Promise.all(batch.map(async function (n) {
+          try {
+            var pg = await pdf.getPage(n);
+            var tc = await pg.getTextContent();
+            pg.cleanup();
+            return buildLines(tc.items, o.pos);
+          } catch (e) { failed++; return []; }
+        }));
+        batch.forEach(function (n, k) { C.pages[n] = res[k]; });
+        item.pagesDone = Math.min(missing.length, i + batch.length);
+        item.prog = item.pagesDone / missing.length;
+        if (item.id === sel) paintBar(item);
+        await tick();
+      }
+      try { await pdf.destroy(); } catch (e) {}
+      if (w) w.terminate();
+    }
+
+    var pd = want.filter(function (n) { return C.pages[n]; }).map(function (n) { return { n: n, lines: C.pages[n] }; });
+    var r = assemble(pd, o), notes = [];
+    if (item.cancel) notes.push('หยุดก่อนครบ ได้ ' + pd.length + ' จาก ' + want.length + ' หน้าที่เลือก');
+    if (want.length < C.n && !item.cancel) notes.push('แปลงเฉพาะ ' + want.length + ' จาก ' + C.n + ' หน้า');
+    if (failed) notes.push('อ่านไม่ได้ ' + failed + ' หน้า');
+    item.cancel = false;
+    return { md: r.md, warn: [r.warn].concat(notes).filter(Boolean).join(' · ') };
+  }
+
+  /* ---------- Word ---------- */
+  async function docxToMd(buf) {
+    if (!window.mammoth || !td) throw new Error('โหลดตัวแปลง Word ไม่สำเร็จ ลองรีเฟรชหน้านี้');
+    var res = await mammoth.convertToHtml({ arrayBuffer: buf }, {
+      convertImage: mammoth.images.imgElement(function () { return Promise.resolve({ src: '' }); })
+    });
+    var doc = new DOMParser().parseFromString('<body>' + res.value + '</body>', 'text/html');
+    doc.querySelectorAll('img').forEach(function (n) { n.remove(); });
+    doc.querySelectorAll('table').forEach(function (t) {
+      var first = t.querySelector('tr');
+      if (!first || first.querySelector('th')) return;
+      first.querySelectorAll('td').forEach(function (c) {
+        var th = doc.createElement('th'); th.innerHTML = c.innerHTML; c.replaceWith(th);
+      });
+    });
+    var md = td.turndown(doc.body.innerHTML).replace(/\n{3,}/g, '\n\n').trim() + '\n';
+    return { md: thaiFix(md), warn: md.trim() ? '' : 'ไม่พบเนื้อหาในไฟล์ Word นี้' };
+  }
+
+
+  /* ---------- Excel / CSV ---------- */
+  function decodeCsv(buf) {
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+    catch (e) { try { return new TextDecoder('windows-874').decode(buf); } catch (e2) { return new TextDecoder('utf-8').decode(buf); } }
+  }
+  function cellMd(v) { return String(v == null ? '' : v).replace(/\r?\n/g, '<br>').replace(/\|/g, '\\|').replace(/\s+$/, '').replace(/^\s+/, ''); }
+  async function sheetsToMd(item, o) {
+    if (!window.XLSX) throw new Error('โหลดตัวอ่าน Excel ไม่สำเร็จ ลองรีเฟรชหน้านี้');
+    var buf = await item.file.arrayBuffer(), wb;
+    if (item.type === 'csv') wb = XLSX.read(decodeCsv(buf), { type: 'string', raw: true });
+    else wb = XLSX.read(new Uint8Array(buf), { type: 'array', dense: true, cellDates: true });
+    buf = null;
+    var meta = (wb.Workbook && wb.Workbook.Sheets) || [], out = [], skipped = 0, big = [];
+    for (var i = 0; i < wb.SheetNames.length; i++) {
+      var name = wb.SheetNames[i];
+      if (o.hid && meta[i] && meta[i].Hidden) { skipped++; continue; }
+      var rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: false });
+      var width = 0;
+      rows = rows.filter(function (r) {
+        var last = -1; for (var k = r.length - 1; k >= 0; k--) { if (String(r[k]).trim() !== '') { last = k; break; } }
+        if (last < 0) return false; if (last + 1 > width) width = last + 1; return true;
+      });
+      if (!rows.length) continue;
+      if (rows.length > 50000) big.push(name);
+      var lines = ['## ' + cellMd(name).replace(/<br>/g, ' '), ''];
+      rows.forEach(function (r, ri) {
+        var cells = [];
+        for (var c = 0; c < width; c++) cells.push(cellMd(r[c]));
+        lines.push('| ' + cells.join(' | ') + ' |');
+        if (ri === 0) lines.push('| ' + cells.map(function () { return '---'; }).join(' | ') + ' |');
+      });
+      out.push(lines.join('\n'));
+      await tick();
+    }
+    var notes = [];
+    if (skipped) notes.push('ข้ามชีตที่ซ่อน ' + skipped + ' ชีต');
+    if (big.length) notes.push('ชีตที่มีมากกว่า 50,000 แถว: ' + big.join(', ') + ' อาจช้าเมื่อแก้ไขในช่องข้อความ');
+    if (!out.length) return { md: '', warn: 'ไม่พบข้อมูลในไฟล์นี้' };
+    return { md: out.join('\n\n') + '\n', warn: notes.join(' · ') };
+  }
+
+  /* ---------- queue ---------- */
+  async function convert(item) {
+    item.status = 'working'; item.prog = 0; item.pagesDone = 0; item.t0 = Date.now(); render();
+    try {
+      var r;
+      if (item.type === 'pdf') r = await convertPdf(item);
+      else if (item.type === 'docx') r = await docxToMd(await item.file.arrayBuffer());
+      else r = await sheetsToMd(item, opts());
+      item.md = r.md; item.warn = r.warn; item.status = 'done';
+    } catch (e) {
+      item.status = 'error'; item.msg = (e && e.message) ? e.message : 'แปลงไม่สำเร็จ';
+      if (e && e.name === 'PasswordException') item.msg = 'PDF นี้ตั้งรหัสผ่านไว้ จึงอ่านไม่ได้';
+      else if (e && e.name === 'InvalidPDFException') item.msg = 'อ่านไฟล์ PDF นี้ไม่ได้ ไฟล์อาจเสียหาย';
+      if (item.type === 'docx' && /zip|central directory|end of/i.test(item.msg)) item.msg = 'อ่านไฟล์ไม่ได้ ไฟล์อาจเสียหรือเป็น .doc รุ่นเก่า ให้บันทึกเป็น .docx ก่อน';
+    }
+    render();
+  }
+  function enqueue(item) { chain = chain.then(function () { return items.indexOf(item) < 0 ? null : convert(item); }, function () {}); }
+
+  function addFiles(files) {
+    var list = Array.prototype.slice.call(files), bad = [], fresh = [];
+    list.forEach(function (f) {
+      var ext = (f.name.split('.').pop() || '').toLowerCase();
+      if (['pdf', 'docx', 'xlsx', 'xlsm', 'xls', 'csv'].indexOf(ext) < 0) { bad.push(f.name); return; }
+      fresh.push({ id: nextId++, name: f.name, size: f.size, type: ext, file: f, status: 'queue', md: '', warn: '', msg: '', cache: null, cancel: false });
+    });
+    if (bad.length) toast('ข้ามไฟล์ที่ไม่รองรับ: ' + bad.join(', '));
+    if (!fresh.length) return;
+    items = items.filter(function (i) { return !i.example; }).concat(fresh);
+    sel = fresh[0].id;
+    render();
+    fresh.forEach(enqueue);
+  }
+
+  /* ---------- render ---------- */
+  var statT = null;
+  function stats(md) {
+    var lines = md ? md.split('\n').length : 0;
+    var heads = (md.match(/^#{1,6}\s/gm) || []).length;
+    var tables = (md.match(/^\|\s*-{3,}/gm) || []).length;
+    $('#s-ch').textContent = md.length.toLocaleString('th-TH') + ' ตัวอักษร';
+    $('#s-ln').textContent = lines.toLocaleString('th-TH') + ' บรรทัด';
+    $('#s-hd').textContent = heads.toLocaleString('th-TH') + ' หัวข้อ';
+    $('#s-tb').textContent = tables.toLocaleString('th-TH') + ' ตาราง';
+  }
+  function paintBar(it) {
+    var st = $('#state'); st.hidden = false; st.innerHTML = '';
+    var b = document.createElement('b'); b.textContent = it.status === 'queue' ? 'รอคิว' : 'กำลังแปลง…';
+    st.appendChild(b);
+    if (it.pagesTotal) {
+      var d = document.createElement('div'); d.className = 'bar';
+      var i = document.createElement('i'); i.style.width = Math.round((it.prog || 0) * 100) + '%'; d.appendChild(i); st.appendChild(d);
+      var s = document.createElement('span');
+      var el = (Date.now() - it.t0) / 1000, txt = 'หน้า ' + it.pagesDone.toLocaleString('th-TH') + ' จาก ' + it.pagesTotal.toLocaleString('th-TH');
+      if (it.pagesDone > 8 && el > 2) txt += ' · เหลือประมาณ ' + fmtTime(el / it.pagesDone * (it.pagesTotal - it.pagesDone));
+      s.textContent = txt; st.appendChild(s);
+      var c = document.createElement('button'); c.type = 'button'; c.className = 'btn'; c.textContent = 'หยุดและใช้เท่าที่ได้';
+      c.addEventListener('click', function () { it.cancel = true; c.disabled = true; c.textContent = 'กำลังหยุด…'; });
+      st.appendChild(c);
+    } else {
+      var s2 = document.createElement('span'); s2.textContent = 'กำลังเปิดไฟล์ กรุณารอสักครู่'; st.appendChild(s2);
+    }
+  }
+  function renderList() {
+    var ul = $('#list'); ul.innerHTML = '';
+    items.forEach(function (it) {
+      var li = document.createElement('li'); li.className = 'row';
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'item'; b.setAttribute('aria-current', it.id === sel ? 'true' : 'false');
+      var n = document.createElement('span'); n.className = 'name'; n.textContent = it.name; n.title = it.name;
+      var m = document.createElement('span'); m.className = 'meta';
+      var bd = document.createElement('span'); bd.className = 'badge'; bd.textContent = it.type;
+      var sz = document.createElement('span'); sz.textContent = it.example ? 'ตัวอย่าง' : fmtSize(it.size);
+      var st = document.createElement('span'); st.className = 'st-' + it.status;
+      st.textContent = it.status === 'working' && it.pagesTotal ? 'กำลังแปลง ' + Math.round((it.prog || 0) * 100) + '%' : { done: 'เสร็จแล้ว', working: 'กำลังแปลง', error: 'ผิดพลาด', queue: 'รอคิว' }[it.status];
+      m.appendChild(bd); m.appendChild(sz); m.appendChild(st);
+      b.appendChild(n); b.appendChild(m);
+      b.addEventListener('click', function () { sel = it.id; render(); });
+      var x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', 'ลบ ' + it.name);
+      x.addEventListener('click', function () {
+        it.cancel = true;
+        items = items.filter(function (k) { return k.id !== it.id; });
+        if (sel === it.id) sel = items.length ? items[0].id : null;
+        render();
+      });
+      li.appendChild(b); li.appendChild(x); ul.appendChild(li);
+    });
+    $('#clear').hidden = !items.length;
+  }
+  function renderOut() {
+    var it = cur(), st = $('#state'), ta = $('#ta'), pv = $('#pv'), note = $('#note');
+    $('#fname').textContent = it ? mdName(it.name) : 'ยังไม่มีไฟล์';
+    $('#chip').hidden = !(it && it.example);
+    var ready = !!(it && it.status === 'done' && it.md);
+    $('#copy').disabled = !ready; $('#save').disabled = !ready;
+    note.hidden = !(it && it.warn); note.textContent = it && it.warn ? it.warn : '';
+    st.hidden = true;
+    if (!it) {
+      st.hidden = false; st.innerHTML = '';
+      var b = document.createElement('b'); b.textContent = 'เลือกไฟล์เพื่อเริ่มแปลง';
+      var s = document.createElement('span'); s.textContent = 'ผลลัพธ์ Markdown จะแสดงที่นี่ และแก้ไขต่อได้ทันที';
+      st.appendChild(b); st.appendChild(s);
+      ta.value = ''; ta.dataset.id = ''; stats(''); ta.hidden = tab !== 'md'; pv.hidden = true; return;
+    }
+    if (it.status === 'working' || it.status === 'queue') { paintBar(it); ta.value = ''; ta.dataset.id = ''; stats(''); return; }
+    if (it.status === 'error') {
+      st.hidden = false; st.innerHTML = '';
+      var b2 = document.createElement('b'); b2.textContent = 'แปลงไม่สำเร็จ'; b2.style.color = 'var(--bad)';
+      var s2 = document.createElement('span'); s2.textContent = it.msg;
+      st.appendChild(b2); st.appendChild(s2); ta.value = ''; ta.dataset.id = ''; stats(''); return;
+    }
+    if (ta.dataset.id !== it.id + ':' + it.md.length || ta.value !== it.md) { ta.value = it.md; ta.dataset.id = it.id + ':' + it.md.length; }
+    stats(it.md);
+    ta.hidden = tab !== 'md'; pv.hidden = tab !== 'pv';
+    if (tab === 'pv') {
+      var src = it.md.length > PV_LIMIT ? it.md.slice(0, PV_LIMIT) : it.md;
+      try { pv.innerHTML = DOMPurify.sanitize(marked.parse(src)); } catch (e) { pv.textContent = src; }
+      if (it.md.length > PV_LIMIT) {
+        var cut = document.createElement('div'); cut.className = 'cut';
+        cut.textContent = 'เอกสารยาวมาก ตัวอย่างนี้แสดงเฉพาะ ' + PV_LIMIT.toLocaleString('th-TH') + ' ตัวอักษรแรก ไฟล์ที่คัดลอกหรือบันทึกจะมีเนื้อหาครบทั้งหมด';
+        pv.appendChild(cut);
+      }
+    }
+  }
+  function render() { renderList(); renderOut(); }
+
+  /* ---------- events ---------- */
+  $('#file').addEventListener('change', function (e) { addFiles(e.target.files); e.target.value = ''; });
+  var drop = $('#drop');
+  ['dragenter', 'dragover'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
+  drop.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+  window.addEventListener('dragover', function (e) { e.preventDefault(); });
+  window.addEventListener('drop', function (e) { e.preventDefault(); if (e.dataTransfer && e.dataTransfer.files && !drop.contains(e.target)) addFiles(e.dataTransfer.files); });
+
+  $('#clear').addEventListener('click', function () { items.forEach(function (i) { i.cancel = true; }); items = []; sel = null; render(); });
+  $('#ta').addEventListener('input', function () {
+    var it = cur(); if (!it) return; var v = this.value;
+    it.md = v; this.dataset.id = it.id + ':' + v.length;
+    clearTimeout(statT); statT = setTimeout(function () { stats(v); }, 250);
+  });
+
+  function setTab(t) {
+    tab = t;
+    $('#t-md').setAttribute('aria-selected', t === 'md'); $('#t-pv').setAttribute('aria-selected', t === 'pv');
+    renderOut();
+  }
+  $('#t-md').addEventListener('click', function () { setTab('md'); });
+  $('#t-pv').addEventListener('click', function () { setTab('pv'); });
+
+  $('#copy').addEventListener('click', function () {
+    var it = cur(); if (!it) return;
+    var fallback = function () { var ta = $('#ta'); setTab('md'); ta.focus(); ta.select(); try { document.execCommand('copy'); toast('คัดลอกแล้ว'); } catch (e) { toast('เลือกข้อความแล้ว กด Ctrl+C เพื่อคัดลอก'); } };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(it.md).then(function () { toast('คัดลอกแล้ว'); }, fallback);
+    else fallback();
+  });
+  $('#save').addEventListener('click', function () {
+    var it = cur(); if (!it) return;
+    var blob = new Blob(['﻿' === '' ? '' : it.md], { type: 'text/markdown;charset=utf-8' });
+    if (dl) {
+      dl.save({ filename: mdName(it.name), data: blob }).then(
+        function () { toast('บันทึกแล้ว'); },
+        function (e) { if (e && e.code !== 'declined') toast('บันทึกไม่สำเร็จ ใช้ปุ่มคัดลอกแทนได้'); }
+      );
+      return;
+    }
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = mdName(it.name);
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1500); toast('บันทึกแล้ว');
+  });
+
+  function reconvertPdfs() {
+    items.forEach(function (it) { if (!it.example && it.type !== 'docx' && it.status !== 'queue') { if (it.status === 'working') return; enqueue(it); } });
+  }
+  ['#o-head', '#o-hf', '#o-pg', '#o-pos', '#o-hid'].forEach(function (id) { $(id).addEventListener('change', reconvertPdfs); });
+  $('#o-range').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); reconvertPdfs(); } });
+  $('#o-range').addEventListener('change', reconvertPdfs);
+
+  /* ---------- boot ---------- */
+  items.push({ id: nextId++, name: 'รายงานตัวอย่าง.docx', size: 0, type: 'docx', status: 'done', md: SAMPLE, warn: '', example: true });
+  sel = items[0].id;
+  if (inViewer) $('#save').hidden = true;
+  render();
+  try {
+    if (inViewer) window.claude.use('downloads').then(function (d) { if (d) { dl = d; $('#save').hidden = false; } }, function () {});
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
