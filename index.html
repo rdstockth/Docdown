@@ -144,7 +144,8 @@ textarea[hidden], .preview[hidden] { display: none; }
         <label class="opt"><input type="checkbox" id="o-head" checked><span>ตรวจหัวข้อ<small>ดูจากขนาดตัวอักษรที่ใหญ่กว่าเนื้อหา</small></span></label>
         <label class="opt"><input type="checkbox" id="o-hf" checked><span>ตัดหัวกระดาษ/ท้ายกระดาษที่ซ้ำ<small>เช่น เลขหน้า ชื่อบริษัทที่ขึ้นทุกหน้า</small></span></label>
         <label class="opt"><input type="checkbox" id="o-pg"><span>ขีดคั่นระหว่างหน้า<small>แทรก --- ที่รอยต่อของแต่ละหน้า</small></span></label>
-        <label class="opt"><input type="checkbox" id="o-pos"><span>เรียงข้อความตามตำแหน่งบนหน้า<small>เปิดเมื่อข้อความที่ได้สลับลำดับ เช่น ไฟล์ที่ลำดับในโครงสร้างไม่ตรงกับที่ตาเห็น</small></span></label>
+        <label class="opt"><input type="checkbox" id="o-tbl" checked><span>แปลงตารางเป็นตาราง Markdown<small>ตรวจจากข้อความที่เรียงเป็นคอลัมน์ เช่น ใบเสนอราคา ใบแจ้งหนี้</small></span></label>
+        <label class="opt"><input type="checkbox" id="o-pos" checked><span>เรียงข้อความตามตำแหน่งบนหน้า<small>แนะนำให้เปิด จำเป็นสำหรับตาราง ปิดเมื่อหน้ามีหลายคอลัมน์ข้อความแบบหนังสือพิมพ์</small></span></label>
       </fieldset>
 
       <fieldset class="opts">
@@ -224,7 +225,24 @@ function parseRange(str, n) {
   return Object.keys(seen).map(Number).sort(function (x, y) { return x - y; });
 }
 
-/* items จาก pdf.js -> บรรทัดข้อความ */
+/* ฟอนต์บางตัวส่งสระอา (า) ออกมาเป็นรหัสควบคุม \u0003 : แก้กลับ และตัดรหัสควบคุมที่เหลือ */
+function fixUrls(t) {
+  var m = /https?:\s*\/\s*\//.exec(t);
+  if (!m) return t;
+  var head = t.slice(0, m.index), pieces = t.slice(m.index).split(/\s+/), url = pieces.shift().replace(/\s+/g, '');
+  while (pieces.length) {
+    var p = pieces[0];
+    if (/[\/.:?=&#%-]$/.test(url) || /^[\/.:?=&#%-]/.test(p)) { url += p; pieces.shift(); } else break;
+  }
+  return head + url + (pieces.length ? ' ' + fixUrls(pieces.join(' ')) : '');
+}
+function fixCtl(t) {
+  if (THAI.test(t)) t = t.replace(/ำ\u0003/g, 'ำ').replace(/([฀-๿])\u0003/g, '$1า');
+  t = t.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '');
+  return /https?:\s*\//.test(t) ? fixUrls(t) : t;
+}
+
+/* items จาก pdf.js -> บรรทัดข้อความ (พร้อมแยกเป็นเซลล์ตามช่องว่างกว้าง ใช้สร้างตาราง) */
 function buildLines(raw, byPos) {
   var its = [], prev = null;
   raw.forEach(function (it) {
@@ -247,25 +265,102 @@ function buildLines(raw, byPos) {
   var out = [];
   lines.forEach(function (l) {
     if (byPos) l.parts.sort(function (a, b) { return a.x - b.x; });
-    var text = '', last = null, weight = {}, x1 = Infinity, x2 = -Infinity;
+    var text = '', last = null, weight = {}, x1 = Infinity, x2 = -Infinity, cells = [], cur = null;
     l.parts.forEach(function (p) {
+      var blank = !p.s.trim(), sp = '', brk = false;
       if (last) {
         var gap = p.x - (last.x + last.w);
         var both = THAI.test(text.charAt(text.length - 1)) && THAI.test(p.s.charAt(0));
-        var th = both ? p.size * 0.33 : p.size * 0.18;
-        if (gap > th && !/\s$/.test(text) && !/^\s/.test(p.s)) text += ' ';
+        if (gap > (both ? p.size * 0.33 : p.size * 0.18) && !/\s$/.test(text) && !/^\s/.test(p.s)) sp = ' ';
+        if (gap > p.size * 1.5) brk = true;
       }
-      text += p.s; last = p;
+      if (blank && p.w > p.size * 1.5) brk = true;
+      last = p;
+      if (brk) { if (cur) { cells.push(cur); cur = null; } if (!/\s$/.test(text)) text += ' '; if (blank) return; }
+      else text += sp;
+      text += p.s;
+      if (!cur) cur = { t: '', x: p.x, x2: p.x };
+      cur.t += (brk ? '' : sp) + p.s; cur.x2 = p.x + p.w;
       var k = Math.round(p.size * 2) / 2; weight[k] = (weight[k] || 0) + p.s.length;
       if (p.x < x1) x1 = p.x;
       if (p.x + p.w > x2) x2 = p.x + p.w;
     });
-    text = text.replace(/\s+/g, ' ').trim();
+    if (cur) cells.push(cur);
+    text = fixCtl(text.replace(/\s+/g, ' ').trim());
     if (!text) return;
+    cells = cells.map(function (c) { return { t: fixCtl(c.t.replace(/\s+/g, ' ').trim()), x: c.x, x2: c.x2 }; }).filter(function (c) { return c.t; });
     var best = l.size, bw = -1;
     Object.keys(weight).forEach(function (k) { if (weight[k] > bw) { bw = weight[k]; best = parseFloat(k); } });
-    out.push({ text: text, x: x1, x2: x2, y: l.y, size: best });
+    out.push({ text: text, x: x1, x2: x2, y: l.y, size: best, cells: cells });
   });
+  return out;
+}
+
+/* หาช่วงบรรทัดที่เป็นตาราง (หลายเซลล์เรียงตรงกันหลายบรรทัด) แล้วแปลงเป็นตาราง GFM */
+var NUMCELL = /^[\d,.\s%()฿$+\-/๐-๙]+$/;
+function buildTable(blk, body) {
+  var all = [];
+  blk.forEach(function (l) { l.cells.forEach(function (c) { all.push(c); }); });
+  all.sort(function (a, b) { return a.x - b.x; });
+  var cols = [];
+  all.forEach(function (c) {
+    var last = cols[cols.length - 1];
+    if (last && c.x <= last.x2) last.x2 = Math.max(last.x2, c.x2); else cols.push({ x: c.x, x2: c.x2 });
+  });
+  if (cols.length < 2 || cols.length > 14) return null;
+  function colOf(c) {
+    var ctr = (c.x + c.x2) / 2, best = 0, bd = Infinity;
+    cols.forEach(function (k, i) { var d = (ctr >= k.x && ctr <= k.x2) ? 0 : Math.min(Math.abs(ctr - k.x), Math.abs(ctr - k.x2)); if (d < bd) { bd = d; best = i; } });
+    return best;
+  }
+  var rows = [], prevY = null;
+  blk.forEach(function (l) {
+    var gap = prevY == null ? 0 : prevY - l.y, r;
+    if (rows.length && l.cells.length === 1 && colOf(l.cells[0]) !== 0 && gap < body * 1.9) {
+      var ci = colOf(l.cells[0]); r = rows[rows.length - 1];
+      r[ci] = r[ci] ? r[ci] + '<br>' + l.cells[0].t : l.cells[0].t;
+    } else {
+      r = cols.map(function () { return ''; });
+      l.cells.forEach(function (c) { var k = colOf(c); r[k] = r[k] ? r[k] + ' ' + c.t : c.t; });
+      rows.push(r);
+    }
+    prevY = l.y;
+  });
+  if (rows.length < 2) return null;
+  var esc = function (t) { return t.replace(/\|/g, '\\|'); };
+  var align = cols.map(function (c, i) {
+    var vals = rows.slice(1).map(function (r) { return r[i]; }).filter(Boolean);
+    return vals.length && vals.every(function (v) { return NUMCELL.test(v); }) ? '---:' : '---';
+  });
+  var out = [];
+  rows.forEach(function (r, i) {
+    out.push('| ' + r.map(esc).join(' | ') + ' |');
+    if (i === 0) out.push('| ' + align.join(' | ') + ' |');
+  });
+  return out.join('\n');
+}
+function tableize(ls, body) {
+  var out = [], i = 0;
+  while (i < ls.length) {
+    var l = ls[i];
+    if (l.cells && l.cells.length >= 2) {
+      var blk = [l], last = l, j = i + 1;
+      while (j < ls.length) {
+        var n = ls[j], gap = last.y - n.y;
+        if (gap > body * 3.2) break;
+        if (n.cells.length >= 2) { blk.push(n); last = n; j++; continue; }
+        var minx = Infinity, maxx = -Infinity;
+        blk.forEach(function (b) { b.cells.forEach(function (c) { if (c.x < minx) minx = c.x; if (c.x2 > maxx) maxx = c.x2; }); });
+        if (n.cells.length === 1 && gap < body * 1.9 && n.x >= minx - body && n.x2 <= maxx + body) { blk.push(n); last = n; j++; continue; }
+        break;
+      }
+      while (blk.length && blk[blk.length - 1].cells.length < 2) { blk.pop(); j--; }
+      var multi = blk.filter(function (b) { return b.cells.length >= 2; }).length;
+      var tb = multi >= 2 ? buildTable(blk, body) : null;
+      if (tb) { out.push({ table: tb, y: blk[blk.length - 1].y }); i = j; continue; }
+    }
+    out.push(l); i++;
+  }
   return out;
 }
 
@@ -303,7 +398,9 @@ function assemble(pd, o) {
     }
     var width = rmax - margin;
     var blocks = [], para = null, prev = null;
-    ls.forEach(function (l) {
+    var segs = o.tbl ? tableize(ls, body) : ls;
+    segs.forEach(function (l) {
+      if (l.table) { blocks.push({ type: 't', text: l.table }); para = null; prev = null; return; }
       var t = l.text, ratio = l.size / body, level = 0;
       if (o.head && t.length < 120 && ratio >= 1.15) level = ratio >= 1.8 ? 1 : ratio >= 1.5 ? 2 : ratio >= 1.3 ? 3 : 4;
       var bullet = !level && (/^[•●▪◦‣▫■·]\s*/.test(t) || /^[-–—*]\s+/.test(t));
@@ -366,7 +463,7 @@ function assemble(pd, o) {
   } catch (e) { td = null; }
   if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_SRC;
 
-  function opts() { return { head: $('#o-head').checked, hf: $('#o-hf').checked, pg: $('#o-pg').checked, pos: $('#o-pos').checked, hid: $('#o-hid').checked, range: $('#o-range').value }; }
+  function opts() { return { head: $('#o-head').checked, hf: $('#o-hf').checked, pg: $('#o-pg').checked, pos: $('#o-pos').checked, tbl: $('#o-tbl').checked, hid: $('#o-hid').checked, range: $('#o-range').value }; }
   function tick() { return new Promise(function (r) { setTimeout(r, 0); }); }
   function toast(msg) {
     var t = $('#toast'); t.textContent = msg; t.classList.add('on');
@@ -686,7 +783,7 @@ function assemble(pd, o) {
   function reconvertPdfs() {
     items.forEach(function (it) { if (!it.example && it.type !== 'docx' && it.status !== 'queue') { if (it.status === 'working') return; enqueue(it); } });
   }
-  ['#o-head', '#o-hf', '#o-pg', '#o-pos', '#o-hid'].forEach(function (id) { $(id).addEventListener('change', reconvertPdfs); });
+  ['#o-head', '#o-hf', '#o-pg', '#o-pos', '#o-tbl', '#o-hid'].forEach(function (id) { $(id).addEventListener('change', reconvertPdfs); });
   $('#o-range').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); reconvertPdfs(); } });
   $('#o-range').addEventListener('change', reconvertPdfs);
 
